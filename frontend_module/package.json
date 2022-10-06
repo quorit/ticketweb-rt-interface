@@ -1,0 +1,12 @@
+{
+  "name": "rt_network",
+  "version": "1.0.0",
+  "description": "",
+  "main": "rt_network.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Michael Walton",
+  "license": "Public domain"
+}
