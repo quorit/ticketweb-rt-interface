@@ -263,8 +263,9 @@ def create_token(secret,user_id, duration):
 
 
 
-def create_response_body_user_data(display_name,mail):
+def create_response_body_user_data(net_id,display_name,mail):
     return {
+            "net_id": net_id,
             "display_name": display_name,
             "mail": mail
         }
@@ -329,8 +330,8 @@ class UserData ():
 
 
     def on_get(self,req,resp):
-        user_data = _get_user_data(["displayName","mail"],req,self.config_data)
-        response_body = create_response_body_user_data(user_data["displayName"],user_data["mail"])
+        user_data = _get_user_data(["displayName","mail","sAMAccountName"],req,self.config_data)
+        response_body = create_response_body_user_data(user_data["sAMAccountName"],user_data["displayName"],user_data["mail"])
         print(response_body)
         resp.text=json.dumps(response_body)
         resp.content_type = falcon.MEDIA_JSON
@@ -467,7 +468,8 @@ class SubmitTicket():
         with tempfile.TemporaryDirectory() as temp_dir:
             req_content = get_req_content(req,temp_dir)
             json_part = req_content["json"]
-            due_date_rt = get_due_date_rt(json_part["due_date"])
+            
+
             real_name = user_data["displayName"]
             ticket_content = self.get_ticket_content(real_name,json_part)
             attachments = req_content["attachments"]
@@ -481,10 +483,11 @@ class SubmitTicket():
                     "RequestType": self.report_type
                 },
                 "Content": ticket_content,
-                "ContentType": "text/html",
-                "Due": due_date_rt
+                "ContentType": "text/html"
 
             }
+            if "due_date" in json_part:
+                internal_req_content["Due"] = get_due_date_rt(json_part["due_date"])
 
             print(internal_req_content)
 
