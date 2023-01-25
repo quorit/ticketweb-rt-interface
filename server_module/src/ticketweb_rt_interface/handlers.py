@@ -332,7 +332,6 @@ class UserData ():
     def on_get(self,req,resp):
         user_data = _get_user_data(["displayName","mail","sAMAccountName"],req,self.config_data)
         response_body = create_response_body_user_data(user_data["sAMAccountName"],user_data["displayName"],user_data["mail"])
-        print(response_body)
         resp.text=json.dumps(response_body)
         resp.content_type = falcon.MEDIA_JSON
         resp.status = falcon.HTTP_OK
