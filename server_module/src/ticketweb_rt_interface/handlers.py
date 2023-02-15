@@ -213,7 +213,7 @@ class BadRequestContentNotMultipart(BadRequest):
 
 
 
-def _get_user_id_from_jwt_data(req,config_data):
+def _get_user_data(req,config_data):
     receive = requests.get(config_data["pub_key_url"])
     if receive.status_code != 200:
             raise Exception("Failed commmunication with token server")
@@ -232,17 +232,29 @@ def _get_user_id_from_jwt_data(req,config_data):
         req_decoded = jwt.decode(
                 req_token,pub_key,
                 algorithms=['RS256'],
-                options={"require": ["user_id","exp"]})
+                options={"require": ["net_id","real_name","email","exp"]})
     except jwt.exceptions.ExpiredSignatureError as e:
-        raise BadRequestExpiredToken()
+        raise falcon.HTTPUnauthorized(
+            description="JWT token has expired"
+        )
     except jwt.exceptions.InvalidTokenError as e:
-        # note that if the exp part of the claim has expired an exception will be thrown
-        # (That test is built in)
-        raise BadRequestInvalidJWT_Token() from e
-    user_id = req_decoded['user_id']
-    if not isinstance(user_id,str):
-        raise BadRequestRoleNotString()
-    return user_id
+        raise falcon.HTTPBadRequest(
+            description="Invalid Token Error: " + str(e)
+        )
+    if not isinstance(req_decoded["net_id"],str):
+        raise falcon.HTTPBadRequest(
+            description="net_id field in jwt data does not have string type"
+        )
+    if not isinstance(req_decoded["real_name"],str):
+        raise falcon.HTTPBadRequest(
+            description="real_name field in jwt data does not have string type"
+        )
+    if not isinstance(req_decoded["email"],str):
+        raise falcon.HTTPBadRequest(
+            description="email field in jwt data does not have string type"
+        )
+    req_decoded.pop("exp")
+    return req_decoded
 
 
 
@@ -263,12 +275,6 @@ def create_token(secret,user_id, duration):
 
 
 
-def create_response_body_user_data(net_id,display_name,mail):
-    return {
-            "net_id": net_id,
-            "display_name": display_name,
-            "mail": mail
-        }
 
 
 
@@ -280,69 +286,6 @@ def _get_rt_api_token(config_data):
     return api_token
 
 
-
-
-
-
-
-def _get_pw(config_data):
-    password_exec = config_data["ldap"]["password_exec"]
-    pw = os.popen(password_exec).read()
-    return pw
-
-
-
-
-
-
-def _get_ldap_handle(config_data):
-        ldap_data = config_data["ldap"]
-        url = ldap_data["url"]
-        ldap_handle  = ldap.initialize(url)
-        service_account_dn = ldap_data["dn"]
-        service_account_pw = _get_pw(config_data)
-        ldap_handle.simple_bind_s(service_account_dn,service_account_pw)
-        return ldap_handle
-
-
-def _get_user_data(attributes,req,config_data):
-    user_dn = _get_user_id_from_jwt_data(req,config_data)
-    ldap_handle = _get_ldap_handle(config_data)
-    ldap_handle.set_option(ldap.OPT_REFERRALS, 0)
-    ldap_search_result = ldap_handle.search_s(user_dn,ldap.SCOPE_SUBTREE,"objectclass=*",attributes)
-    if not user_dn:
-            raise BadRequestUserNotFound(user_dn)
-    result_attributes = ldap_search_result[0][1]
-    result_dict = {}
-
-    for attribute in attributes:
-        result_dict[attribute]=result_attributes[attribute][0].decode(encoding='utf-8', errors='strict')
-    return result_dict
-
-
-
-
-
-
-class UserData ():
-    def __init__(self,config_data):
-        self.config_data = config_data
-
-
-    def on_get(self,req,resp):
-        user_data = _get_user_data(["displayName","mail","sAMAccountName"],req,self.config_data)
-        response_body = create_response_body_user_data(user_data["sAMAccountName"],user_data["displayName"],user_data["mail"])
-        resp.text=json.dumps(response_body)
-        resp.content_type = falcon.MEDIA_JSON
-        resp.status = falcon.HTTP_OK
-
-
-# def get_req_content(req):
-#    if req.content_length == 0:
-#        raise BadRequestNoContentReceived()
-#    req_content = json.load(req.stream)
-#    return req_content
-#    #need more tests. is content too large? does it actually parse
 
 
 
@@ -405,7 +348,7 @@ class SubmitTicket():
                                     "%Y-%m-%d %H:%M:%S"))))
     # need to throw bad requestrs if the due date is unparseable.
 
-        user_data = _get_user_data(["displayName","mail","sAMAccountName"],req,self.config_data)
+        user_data = _get_user_data(req,self.config_data)
         #For other form types this comes out of the request
         
 
@@ -416,7 +359,7 @@ class SubmitTicket():
         headers = {
             "Authorization": auth_string
         }
-        mail = user_data["mail"]
+        mail = user_data["email"]
 
         mail_enc = urllib.parse.quote(mail)
         rt_path= rt_path_base + "REST/2.0/"
@@ -428,9 +371,9 @@ class SubmitTicket():
         if receive.status_code == 200:
             current_user_name = mail_enc
         elif receive.status_code == 404:
-            receive = requests.get(rt_path + "user/" + user_data["sAMAccountName"],headers=headers)
+            receive = requests.get(rt_path + "user/" + user_data["net_id"],headers=headers)
             if receive.status_code == 200:
-                current_user_name = user_data["sAMAccountName"]
+                current_user_name = user_data["net_id"]
             elif receive.status_code != 404:
                 raise Exception("Failed RT communication")
         else:
@@ -439,8 +382,8 @@ class SubmitTicket():
             # which is appropriate if this happens
         
         user_fields = {
-            "RealName": user_data["displayName"],
-            "Name": user_data["sAMAccountName"],
+            "RealName": user_data["real_name"],
+            "Name": user_data["net_id"],
             "EmailAddress": mail
         }
         
@@ -469,7 +412,7 @@ class SubmitTicket():
             json_part = req_content["json"]
             
 
-            real_name = user_data["displayName"]
+            real_name = user_data["real_name"]
             ticket_content = self.get_ticket_content(real_name,json_part)
             attachments = req_content["attachments"]
             subject = self.get_subject(json_part)
