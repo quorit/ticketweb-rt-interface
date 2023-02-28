@@ -232,7 +232,7 @@ def _get_user_data(req,config_data):
         req_decoded = jwt.decode(
                 req_token,pub_key,
                 algorithms=['RS256'],
-                options={"require": ["net_id","real_name","email","exp"]})
+                options={"require": ["sub","name","email","exp"]})
     except jwt.exceptions.ExpiredSignatureError as e:
         raise falcon.HTTPUnauthorized(
             description="JWT token has expired"
@@ -241,37 +241,37 @@ def _get_user_data(req,config_data):
         raise falcon.HTTPBadRequest(
             description="Invalid Token Error: " + str(e)
         )
-    if not isinstance(req_decoded["net_id"],str):
+    if not isinstance(req_decoded["sub"],str):
         raise falcon.HTTPBadRequest(
-            description="net_id field in jwt data does not have string type"
+            description="'sub' field in jwt data does not have string type"
         )
-    if not isinstance(req_decoded["real_name"],str):
+    if not isinstance(req_decoded["name"],str):
         raise falcon.HTTPBadRequest(
-            description="real_name field in jwt data does not have string type"
+            description="'name' field in jwt data does not have string type"
         )
     if not isinstance(req_decoded["email"],str):
         raise falcon.HTTPBadRequest(
-            description="email field in jwt data does not have string type"
+            description="'email' field in jwt data does not have string type"
         )
     req_decoded.pop("exp")
     return req_decoded
 
 
 
-def create_token(secret,user_id, duration):
-
-     exp_time = int(time.time()) + 60 * duration
-     exp_time_english = time.ctime(exp_time)
-     jwt_payload = {
-         'user_id': user_id,
-         'exp': exp_time
-     }
-     headers = {
-        'alg': "HS256",
-        'typ': "JWT"
-     }
-     jwt_token = jwt.encode(jwt_payload, secret, algorithm='HS256')
-     return jwt_token
+# def create_token(secret,user_id, duration):
+#
+#     exp_time = int(time.time()) + 60 * duration
+#     exp_time_english = time.ctime(exp_time)
+#     jwt_payload = {
+#         'user_id': user_id,
+#         'exp': exp_time
+#     }
+#     headers = {
+#        'alg': "HS256",
+#        'typ': "JWT"
+#     }
+#     jwt_token = jwt.encode(jwt_payload, secret, algorithm='HS256')
+#     return jwt_token
 
 
 
@@ -371,9 +371,9 @@ class SubmitTicket():
         if receive.status_code == 200:
             current_user_name = mail_enc
         elif receive.status_code == 404:
-            receive = requests.get(rt_path + "user/" + user_data["net_id"],headers=headers)
+            receive = requests.get(rt_path + "user/" + user_data["sub"],headers=headers)
             if receive.status_code == 200:
-                current_user_name = user_data["net_id"]
+                current_user_name = user_data["sub"]
             elif receive.status_code != 404:
                 raise Exception("Failed RT communication")
         else:
@@ -382,8 +382,8 @@ class SubmitTicket():
             # which is appropriate if this happens
         
         user_fields = {
-            "RealName": user_data["real_name"],
-            "Name": user_data["net_id"],
+            "RealName": user_data["name"],
+            "Name": user_data["sub"],
             "EmailAddress": mail
         }
         
@@ -412,7 +412,7 @@ class SubmitTicket():
             json_part = req_content["json"]
             
 
-            real_name = user_data["real_name"]
+            real_name = user_data["name"]
             ticket_content = self.get_ticket_content(real_name,json_part)
             attachments = req_content["attachments"]
             subject = self.get_subject(json_part)
