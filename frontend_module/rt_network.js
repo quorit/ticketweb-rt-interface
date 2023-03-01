@@ -46,6 +46,8 @@ function test_ok(response) {
 
 
 function extended_fetch(url,opts){
+   console.log("URL is:" + url)
+   console.log("opts are " + opts);
    return fetch(url,opts).then(response => response,err=> new ConnectionError(err.message));
 }
 
